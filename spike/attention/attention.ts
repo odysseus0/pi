@@ -108,6 +108,11 @@ export function card(): string {
   };
   window.addEventListener("message", ev => {
     const m = ev.data; if (!m || m.jsonrpc !== "2.0") return;
+    // A request from the host (ping, ui/resource-teardown): answer it.
+    if (m.method && m.id !== undefined) {
+      window.parent.postMessage({ jsonrpc: "2.0", id: m.id, result: {} }, "*");
+      return;
+    }
     if (m.id !== undefined && pending.has(m.id)) {
       const p = pending.get(m.id); pending.delete(m.id);
       m.error ? p.reject(new Error(m.error.message || "error")) : p.resolve(m.result);
@@ -116,13 +121,32 @@ export function card(): string {
     if (m.method === "ui/notifications/tool-result") {
       item = m.params && m.params.structuredContent && m.params.structuredContent.item || item;
       render();
+      queueSize();
     }
   });
+  // The host shows the view only once it has a size, so report it after
+  // the handshake and whenever the content changes, as the ext-apps App
+  // class does with autoResize.
+  let lastW = 0, lastH = 0, queued = false;
+  const reportSize = () => {
+    queued = false;
+    const width = Math.ceil(window.innerWidth);
+    const height = Math.ceil(document.documentElement.getBoundingClientRect().height);
+    if (width === lastW && height === lastH) return;
+    lastW = width; lastH = height;
+    notify("ui/notifications/size-changed", { width, height });
+  };
+  const queueSize = () => { if (!queued) { queued = true; requestAnimationFrame(reportSize); } };
+  const info = { name: "systems-attention card", version: "0.1.1" };
   send("ui/initialize", {
     protocolVersion: "2026-01-26",
     appCapabilities: { availableDisplayModes: ["inline"] },
-    clientInfo: { name: "systems-attention card", version: "0.1.0" },
-  }).then(() => notify("ui/notifications/initialized")).catch(() => {});
+    appInfo: info,
+  }).then(() => {
+    notify("ui/notifications/initialized");
+    reportSize();
+    new ResizeObserver(queueSize).observe(document.documentElement);
+  }).catch(e => { $("ask").textContent = "Handshake failed: " + (e && e.message || e); });
 })();
 </script></body></html>`;
 }
