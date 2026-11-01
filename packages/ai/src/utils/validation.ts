@@ -1,6 +1,6 @@
 import { Compile } from "typebox/compile";
 import type { TLocalizedValidationError } from "typebox/error";
-import { Value } from "typebox/value";
+import { Convert } from "typebox/value";
 import type { Tool, ToolCall } from "../types.ts";
 
 const validatorCache = new WeakMap<object, ReturnType<typeof Compile>>();
@@ -320,7 +320,7 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 	}
 	const args = structuredClone(toolCall.arguments);
 	normalizeOptionalNulls(args, tool.parameters as JsonSchemaObject);
-	Value.Convert(tool.parameters, args);
+	Convert(tool.parameters, args);
 
 	const validator = getValidator(tool.parameters);
 	if (!Object.getOwnPropertySymbols(tool.parameters).includes(TYPEBOX_KIND)) {
