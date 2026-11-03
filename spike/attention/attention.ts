@@ -100,7 +100,8 @@ export function card(): string {
     try {
       await send("tools/call", { name: "attention_answer", arguments: { id: item.id, answer: choice } });
       $("done").hidden = false; $("done").textContent = "Recorded: " + choice;
-      notify("ui/message", { role: "user", content: [{ type: "text", text: "Answered \\"" + item.ask + "\\": " + choice }] });
+      // ui/message is a request the host answers (it may ask the user first).
+      await send("ui/message", { role: "user", content: [{ type: "text", text: "Answered \\"" + item.ask + "\\": " + choice }] }).catch(() => {});
     } catch (e) {
       $("done").hidden = false; $("done").textContent = "Could not record: " + (e && e.message || e);
       for (const b of document.querySelectorAll("button")) b.disabled = false;
@@ -137,7 +138,7 @@ export function card(): string {
     notify("ui/notifications/size-changed", { width, height });
   };
   const queueSize = () => { if (!queued) { queued = true; requestAnimationFrame(reportSize); } };
-  const info = { name: "systems-attention card", version: "0.1.1" };
+  const info = { name: "systems-attention card", version: "0.1.2" };
   send("ui/initialize", {
     protocolVersion: "2026-01-26",
     appCapabilities: { availableDisplayModes: ["inline"] },

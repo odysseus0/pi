@@ -1,0 +1,219 @@
+<title>Attention</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one item at a time, like a pager screen. A thin header with the
+   queue count, then the item as the only object on the page. */
+:root {
+  --paper: #f3f4f1;
+  --ink: #1d2226;
+  --muted: #5d666b;
+  --line: #d6dad5;
+  --card: #fbfcfa;
+  --accent: #b5551b;
+  --accent-ink: #ffffff;
+  --ok: #2f6b45;
+  --warn: #8a5a00;
+  --display: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #15191b; --ink: #e7eae6; --muted: #9aa3a6; --line: #2b3236;
+    --card: #1c2124; --accent: #e08a4f; --accent-ink: #1a1208;
+    --ok: #7cc495; --warn: #e2b660; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #15191b; --ink: #e7eae6; --muted: #9aa3a6; --line: #2b3236;
+  --card: #1c2124; --accent: #e08a4f; --accent-ink: #1a1208;
+  --ok: #7cc495; --warn: #e2b660; color-scheme: dark;
+}
+body {
+  background: var(--paper); color: var(--ink);
+  font: 16px/1.5 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 32px;
+}
+main { max-width: 34rem; margin: 0 auto; display: grid; gap: 18px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font: 600 1.6rem/1.1 var(--display); margin: 0; letter-spacing: -0.01em; }
+.count { font: 500 0.78rem/1 var(--mono); color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.item {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 20px; display: grid; gap: 14px;
+}
+.ask { font: 600 1.35rem/1.25 var(--display); margin: 0; text-wrap: balance; }
+dl { margin: 0; display: grid; gap: 10px; }
+dt { font: 500 0.72rem/1 var(--mono); color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 4px; }
+dd { margin: 0; max-width: 62ch; }
+.source { font: 400 0.85rem/1.3 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.source a { color: inherit; }
+.options { display: grid; gap: 10px; margin-top: 4px; }
+button {
+  font: 600 1rem/1.2 var(--body); padding: 14px 16px; border-radius: 10px;
+  border: 1px solid var(--line); background: transparent; color: var(--ink);
+  text-align: left; cursor: pointer; min-height: 48px;
+}
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: 0.55; cursor: default; }
+.status { font-size: 0.92rem; color: var(--muted); margin: 0; }
+.status.ok { color: var(--ok); }
+.status.warn { color: var(--warn); }
+.empty { text-align: center; padding: 36px 20px; }
+.empty .ask { font-size: 1.15rem; }
+footer { font: 400 0.78rem/1.4 var(--mono); color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) {
+  .item { transition: opacity 160ms ease; }
+}
+</style>
+
+<main>
+  <header>
+    <h1>Attention</h1>
+    <span class="count" id="count">checking queue</span>
+  </header>
+
+  <section class="item" id="item" aria-live="polite">
+    <p class="ask" id="ask">Loading the next item…</p>
+    <dl id="facts" hidden>
+      <div><dt>Why you</dt><dd id="why"></dd></div>
+      <div><dt>If ignored</dt><dd id="ignored"></dd></div>
+    </dl>
+    <p class="source" id="sourceRow" hidden>Source: <a id="source" href="#" target="_blank" rel="noopener">open</a></p>
+    <div class="options" id="options"></div>
+    <p class="status" id="status" hidden></p>
+  </section>
+
+  <footer id="fresh">Reads the attention connector as you. Answers go straight to its server.</footer>
+</main>
+
+<script>
+(() => {
+  const SERVER = "attention";
+  const $ = (id) => document.getElementById(id);
+  let current = null;
+  let answered = new Set();
+
+  function setStatus(text, kind) {
+    const s = $("status");
+    s.hidden = !text;
+    s.textContent = text || "";
+    s.className = "status" + (kind ? " " + kind : "");
+  }
+
+  function renderItem(item) {
+    current = item;
+    $("options").innerHTML = "";
+    if (!item || answered.has(item.id)) {
+      $("item").classList.add("empty");
+      $("ask").textContent = "Nothing is waiting on you.";
+      $("facts").hidden = true;
+      $("sourceRow").hidden = true;
+      $("count").textContent = "0 waiting · limit 5";
+      return;
+    }
+    $("item").classList.remove("empty");
+    $("count").textContent = "1 waiting · limit 5";
+    $("ask").textContent = item.ask;
+    $("why").textContent = item.why || "";
+    $("ignored").textContent = item.ifIgnored || "";
+    $("facts").hidden = false;
+    if (item.source) {
+      $("source").href = item.source;
+      $("source").textContent = item.source.replace(/^https?:\/\//, "");
+      $("sourceRow").hidden = false;
+    }
+    (item.options || []).forEach((label, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.id = "opt-" + i;
+      b.textContent = label;
+      if (i === 0) b.className = "primary";
+      b.addEventListener("click", () => answer(label));
+      $("options").appendChild(b);
+    });
+  }
+
+  function showError(err) {
+    const code = err && err.code;
+    if (code === "server_not_connected") {
+      setStatus("The attention connector isn't added for you. Add it in claude.ai under Customize, Connectors.", "warn");
+    } else if (code === "needs_reauth") {
+      setStatus("Reconnect the attention connector in claude.ai under Customize, Connectors.", "warn");
+    } else if (code === "not_granted" || code === "approval_required") {
+      setStatus("This page needs your permission to use the attention connector. Reload and allow it when asked.", "warn");
+    } else if (code === "server_unavailable") {
+      setStatus("The attention server didn't answer. It will try again in a minute.", "warn");
+    } else {
+      setStatus("Couldn't read the queue: " + ((err && err.message) || "unknown error") + ".", "warn");
+    }
+  }
+
+  let mcp = null;
+
+  async function answer(label) {
+    if (!mcp || !current) return;
+    const item = current;
+    document.querySelectorAll("#options button").forEach((b) => (b.disabled = true));
+    setStatus("Recording your answer…");
+    try {
+      await mcp.callTool(SERVER, "attention_answer", { id: item.id, answer: label });
+      answered.add(item.id);
+      setStatus("Recorded: " + label, "ok");
+      $("count").textContent = "0 waiting · limit 5";
+      document.querySelectorAll("#options button").forEach((b) => {
+        if (b.textContent !== label) b.hidden = true;
+      });
+      mcp.invalidate(SERVER, "attention_next").catch(() => {});
+    } catch (err) {
+      const code = err && err.code;
+      if (code === "server_unavailable" || code === "upstream_error") {
+        setStatus("Not sure it was recorded: the server didn't confirm. Tap again to resend.", "warn");
+      } else {
+        setStatus("Not recorded: " + ((err && err.message) || code || "unknown error") + ".", "warn");
+      }
+      document.querySelectorAll("#options button").forEach((b) => (b.disabled = false));
+    }
+  }
+
+  async function start() {
+    try {
+      mcp = await claude.use("mcp");
+    } catch (e) {
+      mcp = null;
+    }
+    if (!mcp) {
+      $("ask").textContent = "Open this page in claude.ai to see your queue.";
+      $("count").textContent = "offline";
+      return;
+    }
+    mcp.watchTool(SERVER, "attention_next", {}, (ev) => {
+      if (ev.type === "data") {
+        const p = ev.result.payload || {};
+        renderItem(p.item || null);
+        if (ev.result.cache) {
+          const t = new Date(ev.result.cache.storedAt);
+          $("fresh").textContent = "Updated " + t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + ". Answers go straight to the attention server.";
+        }
+      } else {
+        showError(ev.error);
+        const c = ev.error && ev.error.code;
+        if (c === "server_not_connected" || c === "needs_reauth" || c === "not_granted" || c === "approval_required") {
+          renderItem(null);
+          $("ask").textContent = "Can't read the queue.";
+          $("count").textContent = "no access";
+        }
+      }
+    }, { refetchInterval: 60000 });
+  }
+
+  start();
+})();
+</script>
